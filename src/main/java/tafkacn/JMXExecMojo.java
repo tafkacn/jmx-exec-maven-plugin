@@ -4,13 +4,16 @@ import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+
 import javax.management.*;
 import javax.management.remote.JMXConnector;
 import javax.management.remote.JMXConnectorFactory;
 import javax.management.remote.JMXServiceURL;
+
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -38,7 +41,7 @@ public class JMXExecMojo extends AbstractMojo {
 
     final static private HashMap<String, Integer> typeLabelLookup
             = new HashMap<String, Integer>();
-    
+
     static {
         typeLabelLookup.put(byte.class.getName(), TYPELABEL_BYTE);
         typeLabelLookup.put(Byte.class.getName(), TYPELABEL_BYTE);
@@ -59,22 +62,22 @@ public class JMXExecMojo extends AbstractMojo {
 
     @Parameter(required = true)
     public Server[] servers;
-    
+
     @Parameter
     public Attribute[] attributes = EMPTY_ATTRIBUTE_ARRAY;
-    
+
     @Parameter
     public Operation[] operations = EMPTY_OPERATION_ARRAY;
-    
+
     @Parameter(required = true)
     public String objectName;
-    
+
     @Parameter
     public int maxDegreeOfParallelism = 1;
-    
-    final private ArrayList<Exception> exceptions = new ArrayList<Exception>();    
-    
-    private JMXServiceURL getRemoteJMXServiceURL(Server server) throws Exception {
+
+    final private ArrayList<Exception> exceptions = new ArrayList<Exception>();
+
+    private JMXServiceURL getRemoteJMXServiceURL(final Server server) throws Exception {
         getLog().info(String.format("Connecting to %s:%d...",
             server.host,
             server.jndiPort));
@@ -84,8 +87,8 @@ public class JMXExecMojo extends AbstractMojo {
             server.host,
             server.jndiPort));
     }
-    
-    private Object tryParse(String type, String value) throws Exception {
+
+    private Object tryParse(final String type, final String value) throws Exception {
         switch (typeLabelLookup.get(type)) {
             case TYPELABEL_BYTE:
                 return new Byte(value);
@@ -109,8 +112,8 @@ public class JMXExecMojo extends AbstractMojo {
     }
 
     private String formatOperationInvocation(
-        MBeanOperationInfo operationInfo,
-        Object[] parameters) throws Exception {
+        final MBeanOperationInfo operationInfo,
+        final Object[] parameters) throws Exception {
         StringWriter operationWriter = new StringWriter();
         operationWriter.write(operationInfo.getName());
         operationWriter.write("(");
@@ -135,10 +138,10 @@ public class JMXExecMojo extends AbstractMojo {
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
-        try {        
-            ExecutorService threadPool = Executors.newFixedThreadPool(maxDegreeOfParallelism);            
+        try {
+            ExecutorService threadPool = Executors.newFixedThreadPool(maxDegreeOfParallelism);
             for (final Server server : servers) {
-                
+
                 threadPool.submit(new Runnable() {
 
                     @Override
@@ -146,23 +149,31 @@ public class JMXExecMojo extends AbstractMojo {
                         final String serverMessagePrefix = "[" + server.host + "] ";
                         try {
                             final JMXServiceURL jmxServiceURL = getRemoteJMXServiceURL(server);
-                            
-                            final JMXConnector connector = JMXConnectorFactory.connect(jmxServiceURL);
-                            
+
+							JMXConnector connector;
+							if (server.credentials != null) {
+								Map<String, String[]> env = new HashMap<String, String[]>();
+								String[] creds = { server.credentials.user, server.credentials.password };
+								env.put(JMXConnector.CREDENTIALS, creds);
+								connector = JMXConnectorFactory.connect(jmxServiceURL, env);
+							} else {
+								connector = JMXConnectorFactory.connect(jmxServiceURL);
+							}
+
                             final MBeanServerConnection mbeanServer =
                                 connector.getMBeanServerConnection();
-                            
+
                             final ObjectName mbeanObjectName = new ObjectName(objectName);
-                            
+
                             final MBeanInfo mbeanInfo = mbeanServer.getMBeanInfo(mbeanObjectName);
-                            
+
                             if (attributes.length > 0) {
-                                AttributeList attributeList = new AttributeList();                                
+                                AttributeList attributeList = new AttributeList();
                                 HashMap<String, MBeanAttributeInfo> attributeLookup
                                     = new HashMap<String, MBeanAttributeInfo>();
                                 for (MBeanAttributeInfo attributeInfo : mbeanInfo.getAttributes()) {
                                     attributeLookup.put(attributeInfo.getName(), attributeInfo);
-                                    
+
                                 }
                                 for (Attribute attribute : attributes) {
                                     if (attributeLookup.containsKey(attribute.name)) {
@@ -176,15 +187,15 @@ public class JMXExecMojo extends AbstractMojo {
                                                 getLog().info(serverMessagePrefix + String.format("Apending '%s=%s' to the apply list (type=%s)",
                                                     attribute.name,
                                                     attribute.value,
-                                                    attributeType));                                                
+                                                    attributeType));
                                                 attributeList.add(new javax.management.Attribute(attribute.name, tryParse(attributeType, attribute.value)));
                                             }
                                             else {
                                                 throw new Exception(serverMessagePrefix + String.format(
                                                     "Cannot apply attribute '%s' because %s' is not a supported attribute type",
                                                     attribute,
-                                                    attributeType));                                                
-                                            }                                            
+                                                    attributeType));
+                                            }
                                         }
                                     }
                                     else {
@@ -216,7 +227,7 @@ public class JMXExecMojo extends AbstractMojo {
                                         MBeanOperationInfo bestMatch = null;
                                         int minParameterCountDifference = Integer.MAX_VALUE;
                                         for (MBeanOperationInfo operationInfo : operationInfoLookup.get(operation.name)) {
-                                            if (operationInfo.getSignature().length <= operation.parameters.length 
+                                            if (operationInfo.getSignature().length <= operation.parameters.length
                                                 && (operation.parameters.length - operationInfo.getSignature().length) < minParameterCountDifference) {
                                                 minParameterCountDifference = operation.parameters.length - operationInfo.getSignature().length;
                                                 bestMatch = operationInfo;
@@ -224,9 +235,9 @@ public class JMXExecMojo extends AbstractMojo {
                                         }
                                         if (bestMatch == null) {
                                             throw new Exception(serverMessagePrefix + String.format("Could not find an overload of the '%s' operation that takes %d or fewer parameters.",
-                                                operation.name, 
+                                                operation.name,
                                                 operation.parameters.length));
-                                            
+
                                         }
                                         else {
                                             if (minParameterCountDifference > 0) {
@@ -252,7 +263,7 @@ public class JMXExecMojo extends AbstractMojo {
                                     }
                                     else {
                                         throw new Exception(serverMessagePrefix + String.format("'%s' is not an operation of MBean '%s'.",
-                                            operation.name, 
+                                            operation.name,
                                             objectName));
                                     }
                                 }
@@ -266,21 +277,21 @@ public class JMXExecMojo extends AbstractMojo {
                     }
                 });
             }
-            
+
             threadPool.shutdown();
             threadPool.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
-            
+
             if (!exceptions.isEmpty()) {
                 for (Exception e : exceptions) {
-                    getLog().error(e);                                
+                    getLog().error(e);
                 }
                 throw exceptions.get(0);
-            }            
+            }
         }
         catch(Exception e) {
-            throw new MojoExecutionException("Execution failed", e);            
+            throw new MojoExecutionException("Execution failed", e);
         }
-    
+
     }
-    
+
 }
