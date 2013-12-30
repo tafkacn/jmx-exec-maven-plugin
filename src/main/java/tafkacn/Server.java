@@ -10,8 +10,11 @@ public class Server {
 
     @Parameter(required = true)
     public String host;
-    
+
     @Parameter(required = true)
     public int jndiPort;
+
+	@Parameter
+	public Credentials credentials;
 
 }
