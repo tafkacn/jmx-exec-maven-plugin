@@ -4,7 +4,7 @@
 	<groupId>tafkacn</groupId>
 	<artifactId>jmx-exec-maven-plugin</artifactId>
 	<name>JMX Exec Maven Plugin</name>
-	<version>1.1</version>
+	<version>1.2-SNAPSHOT</version>
 	<packaging>maven-plugin</packaging>
 	<url>https://github.com/tafkacn/jmx-exec-maven-plugin</url>
 	
